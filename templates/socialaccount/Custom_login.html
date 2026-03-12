@@ -1,0 +1,87 @@
+{% load socialaccount %}
+
+<!DOCTYPE html>
+<html>
+<head>
+
+<title>Login - OppositeConnect</title>
+
+<style>
+
+body{
+margin:0;
+font-family:Arial;
+background:linear-gradient(135deg,#4f46e5,#9333ea);
+height:100vh;
+display:flex;
+align-items:center;
+justify-content:center;
+}
+
+.card{
+
+background:white;
+padding:40px;
+border-radius:20px;
+width:350px;
+text-align:center;
+box-shadow:0 10px 30px rgba(0,0,0,0.2);
+
+}
+
+h2{
+margin-bottom:10px;
+}
+
+p{
+color:gray;
+margin-bottom:30px;
+}
+
+.google-btn{
+
+display:flex;
+align-items:center;
+justify-content:center;
+gap:10px;
+
+border:1px solid #ddd;
+padding:12px;
+border-radius:10px;
+text-decoration:none;
+color:black;
+font-weight:bold;
+transition:0.3s;
+}
+
+.google-btn:hover{
+
+background:#f3f4f6;
+transform:scale(1.03);
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="card">
+
+<h2>Sign in to OppositeConnect</h2>
+
+<p>Meet new people instantly</p>
+
+<a href="{% provider_login_url 'google' %}" class="google-btn">
+
+<img src="https://developers.google.com/identity/images/g-logo.png" width="20">
+
+Continue with Google
+
+</a>
+
+</div>
+
+</body>
+</html>

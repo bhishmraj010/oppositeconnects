@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>OppositeConnect Video Chat</title>
+
+<style>
+
+body{
+margin:0;
+background:black;
+font-family:Arial;
+overflow:hidden;
+}
+
+/* container */
+
+.container{
+position:relative;
+width:100vw;
+height:100vh;
+}
+
+/* stranger video */
+
+#partnerVideo{
+position:absolute;
+width:100%;
+height:100%;
+object-fit:cover;
+background:black;
+}
+
+/* self video */
+
+#myVideo{
+position:absolute;
+width:160px;
+height:120px;
+bottom:20px;
+right:20px;
+border-radius:10px;
+border:2px solid white;
+}
+
+/* controls */
+
+.controls{
+position:absolute;
+bottom:30px;
+width:100%;
+display:flex;
+justify-content:center;
+gap:20px;
+}
+
+.controls button{
+width:60px;
+height:60px;
+border-radius:50%;
+border:none;
+font-size:22px;
+cursor:pointer;
+}
+
+#camBtn{background:white;}
+#micBtn{background:white;}
+#skipBtn{background:red;color:white;}
+#exitBtn{background:#444;color:white;}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<video id="partnerVideo" autoplay playsinline></video>
+
+<video id="myVideo" autoplay muted playsinline></video>
+
+<div class="controls">
+
+<button id="camBtn">📷</button>
+<button id="micBtn">🎤</button>
+<button id="skipBtn">⏭</button>
+<button id="exitBtn">❌</button>
+
+</div>
+
+</div>
+
+<script>
+
+/* VARIABLES */
+
+let socket
+let localStream
+let peerConnection
+
+let peerReady = false
+let startSignal = false
+let isCaller = false
+
+const config = {
+iceServers:[
+{ urls:"stun:stun.l.google.com:19302" }
+]
+}
+
+const myVideo = document.getElementById("myVideo")
+const partnerVideo = document.getElementById("partnerVideo")
+
+/* WEBSOCKET */
+
+socket = new WebSocket(
+"ws://" + window.location.host + "/ws/video/"
+)
+
+socket.onopen = ()=>{
+console.log("WebSocket connected")
+}
+
+/* CAMERA + PEER SETUP */
+
+async function init(){
+
+localStream = await navigator.mediaDevices.getUserMedia({
+video:true,
+audio:true
+})
+
+myVideo.srcObject = localStream
+
+peerConnection = new RTCPeerConnection(config)
+
+localStream.getTracks().forEach(track=>{
+peerConnection.addTrack(track,localStream)
+})
+
+peerConnection.ontrack = event=>{
+console.log("Remote stream received")
+partnerVideo.srcObject = event.streams[0]
+}
+
+peerConnection.onicecandidate = event=>{
+if(event.candidate){
+
+socket.send(JSON.stringify({
+type:"candidate",
+candidate:event.candidate
+}))
+
+}
+}
+
+peerReady = true
+
+if(startSignal && isCaller){
+startCall()
+}
+
+}
+
+init()
+
+/* START CALL */
+
+async function startCall(){
+
+const offer = await peerConnection.createOffer()
+
+await peerConnection.setLocalDescription(offer)
+
+socket.send(JSON.stringify({
+type:"offer",
+offer:offer
+}))
+
+}
+
+/* SOCKET MESSAGES */
+
+socket.onmessage = async function(event){
+
+const data = JSON.parse(event.data)
+
+console.log("Message:",data.type)
+
+if(data.type === "start"){
+
+startSignal = true
+
+if(Math.random() < 0.5){
+isCaller = true
+}
+
+if(peerReady && isCaller){
+startCall()
+}
+
+}
+
+/* OFFER */
+
+if(data.type === "offer"){
+
+await peerConnection.setRemoteDescription(
+new RTCSessionDescription(data.offer)
+)
+
+const answer = await peerConnection.createAnswer()
+
+await peerConnection.setLocalDescription(answer)
+
+socket.send(JSON.stringify({
+type:"answer",
+answer:answer
+}))
+
+}
+
+/* ANSWER */
+
+if(data.type === "answer"){
+
+await peerConnection.setRemoteDescription(
+new RTCSessionDescription(data.answer)
+)
+
+}
+
+/* ICE */
+
+if(data.type === "candidate"){
+
+try{
+await peerConnection.addIceCandidate(
+new RTCIceCandidate(data.candidate)
+)
+}catch(e){}
+
+}
+
+/* DISCONNECT */
+
+if(data.type === "disconnect"){
+partnerVideo.srcObject = null
+}
+
+}
+
+/* CAMERA TOGGLE */
+
+const camBtn = document.getElementById("camBtn")
+
+camBtn.onclick = ()=>{
+
+const videoTrack = localStream.getVideoTracks()[0]
+
+videoTrack.enabled = !videoTrack.enabled
+
+}
+
+/* MIC TOGGLE */
+
+const micBtn = document.getElementById("micBtn")
+
+micBtn.onclick = ()=>{
+
+const audioTrack = localStream.getAudioTracks()[0]
+
+audioTrack.enabled = !audioTrack.enabled
+
+}
+
+/* SKIP */
+
+document.getElementById("skipBtn").onclick = ()=>{
+
+socket.send(JSON.stringify({
+type:"disconnect"
+}))
+
+partnerVideo.srcObject = null
+
+}
+
+/* EXIT */
+
+document.getElementById("exitBtn").onclick = ()=>{
+
+socket.close()
+
+window.location.href="/"
+
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,187 @@
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<title>OppositeConnect Video Chat</title>
+
+<style>
+
+body{
+margin:0;
+background:#0f2027;
+background:linear-gradient(135deg,#2c5364,#203a43,#0f2027);
+font-family:Arial;
+color:white;
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+}
+
+.container{
+text-align:center;
+}
+
+.videos{
+display:flex;
+gap:20px;
+margin-top:20px;
+}
+
+video{
+width:400px;
+height:300px;
+background:black;
+border-radius:10px;
+}
+
+button{
+margin-top:20px;
+padding:12px 30px;
+border:none;
+background:red;
+color:white;
+font-size:18px;
+border-radius:30px;
+cursor:pointer;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>OppositeConnect Video Chat</h2>
+
+<div class="videos">
+
+<div>
+<video id="myVideo" autoplay muted playsinline></video>
+<p>You</p>
+</div>
+
+<div>
+<video id="partnerVideo" autoplay playsinline></video>
+<p>Stranger</p>
+</div>
+
+</div>
+
+<button onclick="skip()">Skip</button>
+
+</div>
+
+
+<script>
+
+let localStream
+let peer
+
+const socket = new WebSocket("ws://127.0.0.1:8000/ws/video/")
+
+async function startCamera(){
+
+localStream = await navigator.mediaDevices.getUserMedia({
+video:true,
+audio:true
+})
+
+document.getElementById("myVideo").srcObject = localStream
+
+createPeer()
+
+}
+
+function createPeer(){
+
+peer = new RTCPeerConnection({
+iceServers:[
+{urls:"stun:stun.l.google.com:19302"},
+{urls:"stun:stun1.l.google.com:19302"}
+]
+})
+
+localStream.getTracks().forEach(track=>{
+peer.addTrack(track,localStream)
+})
+
+peer.ontrack = function(event){
+document.getElementById("partnerVideo").srcObject = event.streams[0]
+}
+
+peer.onicecandidate = function(event){
+if(event.candidate){
+socket.send(JSON.stringify({
+type:"candidate",
+candidate:event.candidate
+}))
+}
+}
+
+}
+
+socket.onmessage = async function(event){
+
+const data = JSON.parse(event.data)
+
+if(data.type==="matched"){
+startCall()
+}
+
+if(data.type==="offer"){
+
+await peer.setRemoteDescription(new RTCSessionDescription(data.offer))
+
+const answer = await peer.createAnswer()
+
+await peer.setLocalDescription(answer)
+
+socket.send(JSON.stringify({
+type:"answer",
+answer:answer
+}))
+
+}
+
+if(data.type==="answer"){
+await peer.setRemoteDescription(new RTCSessionDescription(data.answer))
+}
+
+if(data.type==="candidate"){
+try{
+await peer.addIceCandidate(data.candidate)
+}catch(e){}
+}
+
+if(data.type==="disconnect"){
+location.reload()
+}
+
+}
+
+async function startCall(){
+
+const offer = await peer.createOffer()
+
+await peer.setLocalDescription(offer)
+
+socket.send(JSON.stringify({
+type:"offer",
+offer:offer
+}))
+
+}
+
+function skip(){
+location.reload()
+}
+
+startCamera()
+
+</script>
+
+</body>
+</html>
+```

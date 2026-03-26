@@ -57,6 +57,33 @@ transform:scale(1.05);
 box-shadow:0 10px 30px rgba(0,0,0,0.3);
 }
 
+/* PROFILE */
+
+.profile-container{
+position:relative;
+}
+
+.profile-icon{
+width:45px;
+height:45px;
+border-radius:50%;
+cursor:pointer;
+border:2px solid white;
+}
+
+.profile-dropdown{
+position:absolute;
+top:60px;
+right:0;
+background:white;
+color:black;
+padding:15px;
+border-radius:10px;
+width:220px;
+display:none;
+box-shadow:0 10px 30px rgba(0,0,0,0.3);
+}
+
 .hero{
 height:85vh;
 display:flex;
@@ -154,9 +181,36 @@ right:25%;
 OppositeConnect
 </div>
 
+<div class="profile-container">
+
+{% if user.is_authenticated %}
+
+<img src="https://cdn-icons-png.flaticon.com/512/149/149071.png"
+class="profile-icon"
+onclick="toggleProfile()">
+
+<div class="profile-dropdown" id="profileBox">
+
+<p><strong>Name:</strong> {{ profile.name|default:"Not set" }}</p>
+<p><strong>City:</strong> {{ profile.city|default:"Not set" }}</p>
+<p><strong>Gender:</strong> {{ profile.gender|default:"Not set" }}</p>
+<p><strong>Age:</strong> {{ profile.age|default:"Not set" }}</p>
+
+<a href="/logout/" class="btn btn-danger btn-sm">
+Logout
+</a>
+
+</div>
+
+{% else %}
+
 <a href="/profile/" class="login-btn">
 Login / Sign Up
 </a>
+
+{% endif %}
+
+</div>
 
 </div>
 
@@ -174,15 +228,25 @@ Start random video chat with strangers around the world
 Start Video Call
 </a>
 
-<a href="/profile/" class="btn btn-warning cta">
-Next Call
-</a>
-
-<a href="/profile/" class="btn btn-light cta">
+<a href="/accounts/google/login/" class="btn btn-light cta">
 Sign in with Google
 </a>
 
 </div>
+
+<script>
+function toggleProfile(){
+let box = document.getElementById("profileBox");
+box.style.display = (box.style.display === "block") ? "none" : "block";
+}
+
+window.onclick = function(e){
+if(!e.target.matches('.profile-icon')){
+let box = document.getElementById("profileBox");
+if(box) box.style.display = "none";
+}
+}
+</script>
 
 </body>
 </html>

@@ -1,31 +1,18 @@
-import random
 from django.http import JsonResponse
-from accounts.models import UserProfile
+
+waiting_user = None
 
 def find_match(request):
+    global waiting_user
 
-    user_profile = UserProfile.objects.get(user=request.user)
-
-    if user_profile.gender == "Male":
-        strangers = UserProfile.objects.filter(
-            gender="Female",
-            is_online=True
-        ).exclude(user=request.user)
-
+    if waiting_user is None:
+        waiting_user = request.user
+        return JsonResponse({"status": "waiting"})
     else:
-        strangers = UserProfile.objects.filter(
-            gender="Male",
-            is_online=True
-        ).exclude(user=request.user)
-
-    if strangers.exists():
-
-        stranger = random.choice(strangers)
+        partner = waiting_user
+        waiting_user = None
 
         return JsonResponse({
-            "match": stranger.user.username
+            "status": "matched",
+            "partner": partner.username
         })
-
-    return JsonResponse({
-        "match": None
-    })

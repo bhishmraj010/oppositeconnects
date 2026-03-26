@@ -70,11 +70,10 @@ AUTHENTICATION_BACKENDS = (
     'allauth.account.auth_backends.AuthenticationBackend',
 )
 
-LOGIN_REDIRECT_URL = '/dashboard/'
-ACCOUNT_LOGIN_REDIRECT_URL = '/dashboard/'
-LOGOUT_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = '/profile/'   
+LOGOUT_REDIRECT_URL = '/accounts/login/'
 LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/dashboard/'
+
 
 
 ASGI_APPLICATION = 'config.asgi.application'

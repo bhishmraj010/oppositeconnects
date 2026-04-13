@@ -1,303 +1,446 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>WebRTC Video Chat</title>
+<title>OppositeConnect – Video Chat</title>
 
 <style>
-body{margin:0;background:black;overflow:hidden;}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-#remoteVideo{
-position:fixed;
-top:0;left:0;
-width:100%;height:100%;
-object-fit:cover;
+body { background: #000; overflow: hidden; font-family: Arial, sans-serif; }
+
+#remoteVideo {
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
 }
 
-#localVideo{
-position:fixed;
-bottom:20px;
-right:20px;
-width:200px;height:150px;
-border:2px solid white;
-border-radius:10px;
-z-index:2;
+#localVideo {
+  position: fixed; bottom: 20px; right: 20px;
+  width: 200px; height: 150px;
+  border: 2px solid #fff; border-radius: 10px;
+  z-index: 2;
 }
 
-.controls{
-position:fixed;
-bottom:30px;
-left:50%;
-transform:translateX(-50%);
-display:flex;
-gap:15px;
-z-index:3;
+/* ── Partner cam off overlay ──────────────────── */
+#partnerCamStatus {
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: #111;
+  display: none;
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 4;
+  color: #fff;
+  font-size: 28px;
+  gap: 15px;
 }
 
-.control-btn{
-width:65px;
-height:65px;
-border-radius:50%;
-border:none;
-font-size:22px;
-cursor:pointer;
-display:flex;
-align-items:center;
-justify-content:center;
-transition:0.3s;
+#partnerCamStatus .icon { font-size: 80px; }
+#partnerCamStatus .text { font-size: 22px; opacity: 0.8; }
+
+/* ── Partner mic off badge ────────────────────── */
+#partnerMicStatus {
+  position: fixed; top: 20px; left: 20px;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 30px;
+  font-size: 16px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
 }
 
-.control-btn:hover{
-transform:scale(1.2);
-box-shadow:0 0 20px rgba(255,255,255,0.6);
+#statusBanner {
+  position: fixed; top: 0; left: 0; right: 0;
+  padding: 12px; text-align: center;
+  font-size: 16px; font-weight: 600; color: #fff;
+  background: rgba(0,0,0,.6);
+  z-index: 10; display: none;
 }
 
-.mic{background:#3b82f6;}
-.cam{background:#8b5cf6;}
-.skip{background:#facc15;}
-.exit{background:#ef4444;}
-
-.toast{
-position:fixed;
-top:30px;
-left:50%;
-transform:translateX(-50%);
-background:rgba(0,0,0,0.7);
-color:white;
-padding:12px 25px;
-border-radius:20px;
-opacity:0;
-transition:0.5s;
-z-index:999;
+.controls {
+  position: fixed; bottom: 30px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; gap: 15px; z-index: 6;
 }
-.toast.show{opacity:1;}
+
+.control-btn {
+  width: 65px; height: 65px;
+  border-radius: 50%; border: none;
+  font-size: 22px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: .3s;
+}
+.control-btn:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 20px rgba(255,255,255,.6);
+}
+
+.mic    { background: #3b82f6; }
+.cam    { background: #8b5cf6; }
+.skip   { background: #facc15; }
+.report { background: #f97316; }
+.exit   { background: #ef4444; }
+
+.toast {
+  position: fixed; top: 60px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,.75); color: #fff;
+  padding: 12px 25px; border-radius: 20px;
+  opacity: 0; transition: .5s; z-index: 999;
+}
+.toast.show { opacity: 1; }
+
+#waitingScreen {
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: #111;
+  display: none;
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  color: #fff; z-index: 5;
+}
+.spinner {
+  width: 60px; height: 60px;
+  border: 6px solid #444;
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+  margin-bottom: 20px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.modal-overlay {
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,.75);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 9999;
+}
+.modal-box {
+  background: #fff; padding: 35px;
+  border-radius: 15px; width: 370px; text-align: center;
+}
+.modal-box h2 { margin-bottom: 12px; }
+.modal-box p  { font-size: 14px; color: #555; margin-bottom: 22px; }
+.btn-red   { background: red;   color: #fff; border: none; padding: 10px 18px; border-radius: 8px; cursor: pointer; margin: 5px; }
+.btn-green { background: green; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; cursor: pointer; margin: 5px; }
 </style>
 </head>
 
 <body>
 
+<input type="hidden" id="userGender" value="{{ profile.gender }}">
+
 <video id="remoteVideo" autoplay playsinline></video>
-<video id="localVideo" autoplay muted playsinline></video>
+<video id="localVideo"  autoplay muted playsinline></video>
+
+<!-- Partner cam off overlay -->
+<div id="partnerCamStatus">
+  <div class="icon">📷</div>
+  <div class="text">Partner ne camera band kar diya</div>
+</div>
+
+<!-- Partner mic off badge -->
+<div id="partnerMicStatus">
+  🔇 Partner ka mic off hai
+</div>
+
+<div id="statusBanner"></div>
+
+<div id="waitingScreen">
+  <div class="spinner"></div>
+  <p id="waitingText">Looking for a match…</p>
+</div>
 
 <div class="controls">
-<button class="control-btn mic" onclick="toggleMic()">🎤</button>
-<button class="control-btn cam" onclick="toggleCam()">📷</button>
-<button class="control-btn skip" onclick="skipUser()">⏭</button>
-<button class="control-btn exit" onclick="exitChat()">❌</button>
+  <button class="control-btn mic"    onclick="toggleMic()"  title="Mute/Unmute">🎤</button>
+  <button class="control-btn cam"    onclick="toggleCam()"  title="Camera On/Off">📷</button>
+  <button class="control-btn skip"   onclick="skipUser()"   title="Next">⏭</button>
+  <button class="control-btn report" onclick="reportUser()" title="Report">🚩</button>
+  <button class="control-btn exit"   onclick="exitChat()"   title="Exit">❌</button>
 </div>
 
 <div id="toast" class="toast"></div>
 
-<script>
-
-let localStream;
-let peer;
-let socket = new WebSocket("ws://localhost:8000/ws/video/");
-
-let micOn = true;
-let camOn = true;
-
-// 🎥 START CAMERA
-async function start(){
-localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-document.getElementById("localVideo").srcObject = localStream;
-createPeer();
-}
-
-function createPeer(){
-peer = new RTCPeerConnection();
-
-localStream.getTracks().forEach(track=>{
-peer.addTrack(track, localStream);
-});
-
-peer.ontrack = event=>{
-document.getElementById("remoteVideo").srcObject = event.streams[0];
-};
-
-peer.onicecandidate = event=>{
-if(event.candidate){
-socket.send(JSON.stringify({
-type:"candidate",
-candidate:event.candidate
-}));
-}
-};
-}
-
-// SOCKET
-socket.onmessage = async (event)=>{
-let data = JSON.parse(event.data);
-
-if(data.type==="offer"){
-await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
-let answer = await peer.createAnswer();
-await peer.setLocalDescription(answer);
-
-socket.send(JSON.stringify({
-type:"answer",
-answer:answer
-}));
-}
-
-if(data.type==="answer"){
-await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
-}
-
-if(data.type==="candidate"){
-try{await peer.addIceCandidate(data.candidate);}catch(e){}
-}
-};
-
-// CALL
-async function call(){
-let offer = await peer.createOffer();
-await peer.setLocalDescription(offer);
-
-socket.send(JSON.stringify({
-type:"offer",
-offer:offer
-}));
-}
-
-// TOAST
-function showToast(msg){
-const t=document.getElementById("toast");
-t.innerText=msg;
-t.classList.add("show");
-setTimeout(()=>t.classList.remove("show"),3000);
-}
-
-// MIC
-function toggleMic(){
-if(!localStream) return;
-micOn=!micOn;
-localStream.getAudioTracks()[0].enabled=micOn;
-showToast(micOn?"🎤 Mic ON":"🔇 Mic OFF");
-}
-
-// CAM
-function toggleCam(){
-if(!localStream) return;
-camOn=!camOn;
-localStream.getVideoTracks()[0].enabled=camOn;
-showToast(camOn?"📷 Camera ON":"🚫 Camera OFF");
-}
-
-// ⏭ SKIP (SAFE VERSION)
-function skipUser(){
-showToast("⏭ Skip disabled (needs backend logic)");
-}
-
-// EXIT
-function exitChat(){
-if(localStream){
-localStream.getTracks().forEach(t=>t.stop());
-}
-window.location.href="/";
-}
-
-
-
-</script>
-
-</body>
-</html>
-
-<!-- COMMUNITY GUIDELINES MODAL -->
+<!-- AGE MODAL -->
 <div id="ageModal" class="modal-overlay">
-    
-    <div class="modal-box">
-        <h2>Community Guidelines</h2>
-
-        <p>
-            Please be respectful while using this platform.  
-            Any inappropriate behavior is strictly discouraged.  
-            If anything inappropriate happens, the user will be responsible.
-        </p>
-
-        <div class="buttons">
-            <button class="btn-red" onclick="under18()">I am under 18</button>
-            <button class="btn-green" onclick="above18()">I am 18 or above</button>
-        </div>
-    </div>
-
+  <div class="modal-box">
+    <h2>Community Guidelines</h2>
+    <p>
+      Please be respectful. Any inappropriate or vulgar behavior is strictly
+      prohibited. Violations will result in a <strong>permanent IP ban</strong>.
+    </p>
+    <button class="btn-red"   onclick="under18()">I am under 18</button>
+    <button class="btn-green" onclick="above18()">I am 18 or above</button>
+  </div>
 </div>
 
-<style>
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-
-    background: rgba(0,0,0,0.7);
-
-    display: flex;
-    justify-content: center;
-    align-items: center;
-
-    z-index: 999;
-}
-
-.modal-box {
-    background: white;
-    padding: 30px;
-    border-radius: 15px;
-    width: 350px;
-    text-align: center;
-}
-
-.modal-box h2 {
-    margin-bottom: 15px;
-}
-
-.modal-box p {
-    font-size: 14px;
-    color: #555;
-    margin-bottom: 20px;
-}
-
-.buttons {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-}
-
-.btn-red {
-    background: red;
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 8px;
-    cursor: pointer;
-}
-
-.btn-green {
-    background: green;
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 8px;
-    cursor: pointer;
-}
-</style>
-
 <script>
 
+const MY_GENDER = document.getElementById("userGender").value || "Other";
+const OPPOSITE  = { Male: "Female", Female: "Male", Other: "Other" };
 
+let localStream = null;
+let peer        = null;
+let socket      = null;
+let micOn       = true;
+let camOn       = true;
 
+// ── Toast ──────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.innerText = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+// ── Status Banner ──────────────────────────────────────────────────
+function showStatus(msg, color = "#222") {
+  const b = document.getElementById("statusBanner");
+  b.style.background = color;
+  b.innerText = msg;
+  b.style.display = "block";
+  setTimeout(() => { b.style.display = "none"; }, 4000);
+}
+
+// ── Waiting Screen ─────────────────────────────────────────────────
+function showWaiting(show, text = "Looking for a match…") {
+  const w = document.getElementById("waitingScreen");
+  document.getElementById("waitingText").innerText = text;
+  w.style.display = show ? "flex" : "none";
+}
+
+// ── Reset partner status indicators ───────────────────────────────
+function resetPartnerStatus() {
+  document.getElementById("partnerCamStatus").style.display = "none";
+  document.getElementById("partnerMicStatus").style.display = "none";
+}
+
+// ── Age Gate ───────────────────────────────────────────────────────
 function under18() {
-    alert("You must be 18+ to use this platform.");
-    window.location.href = "/";
+  alert("You must be 18+ to use this platform.");
+  window.location.href = "/";
 }
 
-function above18() {
-    document.getElementById("ageModal").style.display = "none";
-
-    start();                 // ✅ your original function
-    setTimeout(call,2000);   // ✅ connection logic
+async function above18() {
+  document.getElementById("ageModal").style.display = "none";
+  await initChat();
 }
 
+// ── Camera + Mic Init ──────────────────────────────────────────────
+async function initChat() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById("localVideo").srcObject = localStream;
+    connectSocket();
+  } catch (e) {
+    showToast("❌ Camera / Mic access denied.");
+    console.error(e);
+  }
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────
+function connectSocket() {
+  socket = new WebSocket("ws://" + location.host + "/ws/video/");
+
+  socket.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === "need_gender") {
+      socket.send(JSON.stringify({ type: "register", gender: MY_GENDER }));
+      return;
+    }
+
+    if (data.type === "waiting") {
+      showWaiting(true, `Waiting for a ${OPPOSITE[MY_GENDER]} to connect…`);
+      return;
+    }
+
+    if (data.type === "start") {
+      showWaiting(false);
+      resetPartnerStatus();
+      showStatus(`✅ Connected to a ${data.partner_gender || "stranger"}!`, "#1a7a1a");
+
+      if (!localStream) return;
+      createPeer();
+      if (data.is_caller) {
+        await callPeer();
+      }
+      return;
+    }
+
+    if (data.type === "offer") {
+      if (!localStream) return;
+      if (!peer) createPeer();
+      await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      socket.send(JSON.stringify({ type: "answer", answer }));
+      return;
+    }
+
+    if (data.type === "answer") {
+      if (peer && peer.signalingState === "have-local-offer") {
+        await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+      }
+      return;
+    }
+
+    if (data.type === "candidate") {
+      try {
+        if (peer) await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+      } catch (e) { console.warn("ICE error:", e); }
+      return;
+    }
+
+    // ✅ Partner ka mic status
+    if (data.type === "mic_status") {
+      const el = document.getElementById("partnerMicStatus");
+      el.style.display = data.enabled ? "none" : "flex";
+      return;
+    }
+
+    // ✅ Partner ka cam status
+    if (data.type === "cam_status") {
+      const el = document.getElementById("partnerCamStatus");
+      el.style.display = data.enabled ? "none" : "flex";
+      return;
+    }
+
+    if (data.type === "disconnect") {
+      showStatus("👋 Partner disconnected. Looking for next…", "#b45309");
+      destroyPeer();
+      resetPartnerStatus();
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "register", gender: MY_GENDER }));
+      }
+      return;
+    }
+
+    if (data.type === "partner_banned") {
+      showToast("✅ Report submitted. Partner has been banned.");
+      destroyPeer();
+      resetPartnerStatus();
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "register", gender: MY_GENDER }));
+      }
+      return;
+    }
+
+    if (data.type === "banned") {
+      showStatus("🚫 You have been permanently banned.", "#7f1d1d");
+      socket.close();
+      setTimeout(() => { window.location.href = "/"; }, 3000);
+      return;
+    }
+  };
+
+  socket.onclose = () => console.log("WebSocket closed");
+  socket.onerror = (e) => console.error("WebSocket error:", e);
+}
+
+// ── RTCPeerConnection ──────────────────────────────────────────────
+function createPeer() {
+  destroyPeer();
+
+  peer = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" }
+    ]
+  });
+
+  if (!peer) return;
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+  }
+
+  peer.ontrack = (e) => {
+    document.getElementById("remoteVideo").srcObject = e.streams[0];
+  };
+
+  peer.onicecandidate = (e) => {
+    if (e.candidate && socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+    }
+  };
+
+  peer.onconnectionstatechange = () => {
+    console.log("Connection state:", peer.connectionState);
+  };
+
+  peer.oniceconnectionstatechange = () => {
+    console.log("ICE connection:", peer.iceConnectionState);
+    if (peer.iceConnectionState === "failed") {
+      peer.restartIce();
+    }
+  };
+}
+
+function destroyPeer() {
+  if (peer) { peer.close(); peer = null; }
+  document.getElementById("remoteVideo").srcObject = null;
+}
+
+async function callPeer() {
+  if (!peer) return;
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  socket.send(JSON.stringify({ type: "offer", offer }));
+}
+
+// ── Controls ───────────────────────────────────────────────────────
+function toggleMic() {
+  if (!localStream) return;
+  micOn = !micOn;
+  localStream.getAudioTracks().forEach(t => t.enabled = micOn);
+  showToast(micOn ? "🎤 Mic ON" : "🔇 Mic OFF");
+  // ✅ Partner ko notify karo
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "mic_status", enabled: micOn }));
+  }
+}
+
+function toggleCam() {
+  if (!localStream) return;
+  camOn = !camOn;
+  localStream.getVideoTracks().forEach(t => t.enabled = camOn);
+  showToast(camOn ? "📷 Camera ON" : "🚫 Camera OFF");
+  // ✅ Partner ko notify karo
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "cam_status", enabled: camOn }));
+  }
+}
+
+function skipUser() {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "disconnect" }));
+  }
+  destroyPeer();
+  resetPartnerStatus();
+  showWaiting(true, `Looking for next ${OPPOSITE[MY_GENDER]}…`);
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "register", gender: MY_GENDER }));
+  }
+}
+
+function reportUser() {
+  if (!confirm("Report this user for vulgar/inappropriate activity?\nThey will be permanently banned.")) return;
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "report" }));
+  }
+}
+
+function exitChat() {
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (socket) socket.close();
+  window.location.href = "/";
+}
 
 </script>
+</body>
+</html>

@@ -35,6 +35,11 @@ CSRF_TRUSTED_ORIGINS = [
     "https://www.apintl.org",
 ]
 
+# Render terminates HTTPS at its load balancer and forwards plain HTTP
+# internally. Without this, Django thinks every request is HTTP, which
+# makes allauth build "http://" redirect URIs and breaks Google OAuth.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 # Application definition
 

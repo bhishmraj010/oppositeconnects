@@ -130,9 +130,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if DATABASE_URL:
-    # Production (Render) — reads the connection string from an env var
+    # Production (Render) — reads the connection string from an env var.
+    # conn_max_age=0 avoids exhausting Aiven's free-tier connection limit
+    # (20 slots total) by not holding connections open between requests.
     DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=True)
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=0, ssl_require=True)
     }
 else:
     # Local dev fallback

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ other.username }} | Messages</title>
+
+<style>
+@view-transition { navigation: auto; }
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: .75s;
+  animation-timing-function: cubic-bezier(.62,-0.2,.3,1.3);
+}
+::view-transition-old(root) { animation-name: flipOut; }
+::view-transition-new(root) { animation-name: flipIn; }
+::view-transition-group(root) { animation-duration: .75s; }
+
+@keyframes flipOut {
+  0%   { opacity: 1; filter: blur(0); transform: perspective(800px) rotateY(0deg) scale(1) translateZ(0); }
+  40%  { opacity: .7; filter: blur(3px); }
+  100% { opacity: 0; filter: blur(8px); transform: perspective(800px) rotateY(-55deg) scale(.65) translateZ(-200px); }
+}
+@keyframes flipIn {
+  0%   { opacity: 0; filter: blur(8px); transform: perspective(800px) rotateY(55deg) scale(.65) translateZ(-200px); }
+  60%  { opacity: .8; filter: blur(2px); }
+  100% { opacity: 1; filter: blur(0); transform: perspective(800px) rotateY(0deg) scale(1) translateZ(0); }
+}
+
+body{
+  margin:0; height:100dvh; display:flex; flex-direction:column;
+  background:#0f0f14; color:#fff; font-family:Arial;
+}
+header{
+  padding:14px 18px; background:#1a1a22; display:flex; align-items:center; gap:12px;
+  border-bottom:1px solid rgba(255,255,255,.1);
+}
+header a{ color:#fff; text-decoration:none; font-size:20px; }
+header h2{ margin:0; font-size:16px; }
+
+#messages{
+  flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:8px;
+}
+.msg{
+  max-width:75%; padding:8px 12px; border-radius:14px; font-size:14px; word-wrap:break-word;
+  animation:msgPop .4s cubic-bezier(.34,1.56,.64,1) backwards;
+}
+@keyframes msgPop{ from{ opacity:0; transform:scale(.8) translateY(8px); } to{ opacity:1; transform:scale(1) translateY(0); } }
+.msg.mine{ align-self:flex-end; background:#3b82f6; }
+.msg.theirs{ align-self:flex-start; background:#2a2a35; }
+.msg .time{ display:block; font-size:10px; opacity:.6; margin-top:3px; }
+
+form{
+  display:flex; gap:8px; padding:12px; border-top:1px solid rgba(255,255,255,.1); background:#1a1a22;
+}
+input[type=text]{
+  flex:1; padding:12px 14px; border-radius:22px; border:none; font-size:14px; outline:none;
+}
+button{
+  background:#3b82f6; color:#fff; border:none; width:44px; height:44px;
+  border-radius:50%; cursor:pointer; font-size:16px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/friends/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M19 12H5M11 18l-6-6 6-6"/></svg></a>
+  <h2>{{ other.username }}</h2>
+</header>
+
+<div id="messages"></div>
+
+<form id="msgForm">
+  <input id="msgInput" type="text" maxlength="1000" placeholder="Message…" autocomplete="off">
+  <button type="submit"><svg viewBox="0 0 24 24" fill="currentColor" style="width:17px;height:17px;"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg></button>
+</form>
+
+<script>
+const OTHER = "{{ other.username }}";
+const URL_THREAD = `/friends/message/${OTHER}/`;
+
+function getCookie(name) {
+  const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return v ? v.pop() : '';
+}
+
+function renderMessages(list) {
+  const box = document.getElementById("messages");
+  const wasAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+  box.innerHTML = "";
+  list.forEach(m => {
+    const div = document.createElement("div");
+    div.className = "msg " + (m.mine ? "mine" : "theirs");
+    div.innerHTML = `${escapeHtml(m.text)}<span class="time">${m.time}</span>`;
+    box.appendChild(div);
+  });
+  if (wasAtBottom) box.scrollTop = box.scrollHeight;
+}
+
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.innerText = str;
+  return d.innerHTML;
+}
+
+async function loadMessages() {
+  const res = await fetch(URL_THREAD, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+  const data = await res.json();
+  if (data.messages) renderMessages(data.messages);
+}
+
+document.getElementById("msgForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("msgInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  await fetch(URL_THREAD, {
+    method: "POST",
+    headers: {
+      "X-CSRFToken": getCookie("csrftoken"),
+      "X-Requested-With": "XMLHttpRequest",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: `text=${encodeURIComponent(text)}`,
+  });
+  await loadMessages();
+});
+
+loadMessages();
+setInterval(loadMessages, 3000); // simple polling every 3s
+
+// ── Heartbeat: keep this user marked "online" while the page is open ──
+function sendHeartbeat() {
+  fetch("/friends/heartbeat/", {
+    method: "POST",
+    headers: { "X-CSRFToken": getCookie("csrftoken") },
+  }).catch(() => {});
+}
+sendHeartbeat();
+setInterval(sendHeartbeat, 15000);
+</script>
+
+</body>
+</html>

@@ -1,31 +1,26 @@
-import random
 from django.http import JsonResponse
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
 from accounts.models import UserProfile
 
+waiting_user = None
+
+@login_required
+def video_chat(request):
+    profile = UserProfile.objects.get(user=request.user)
+    return render(request, "videochat.html", {"profile": profile})
+
 def find_match(request):
+    global waiting_user
 
-    user_profile = UserProfile.objects.get(user=request.user)
-
-    if user_profile.gender == "Male":
-        strangers = UserProfile.objects.filter(
-            gender="Female",
-            is_online=True
-        ).exclude(user=request.user)
-
+    if waiting_user is None:
+        waiting_user = request.user
+        return JsonResponse({"status": "waiting"})
     else:
-        strangers = UserProfile.objects.filter(
-            gender="Male",
-            is_online=True
-        ).exclude(user=request.user)
-
-    if strangers.exists():
-
-        stranger = random.choice(strangers)
+        partner = waiting_user
+        waiting_user = None
 
         return JsonResponse({
-            "match": stranger.user.username
+            "status": "matched",
+            "partner": partner.username
         })
-
-    return JsonResponse({
-        "match": None
-    })

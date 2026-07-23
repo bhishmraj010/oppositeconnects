@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <title>OppositeConnects - Create Profile</title>
 
@@ -10,11 +11,12 @@
 
 body{
 background: linear-gradient(135deg,#1e3c72,#2a5298);
-height:100vh;
+min-height:100dvh;
 display:flex;
 justify-content:center;
 align-items:center;
 font-family:Arial;
+padding:20px;
 }
 
 .card-box{
@@ -22,7 +24,12 @@ background:white;
 padding:40px;
 border-radius:15px;
 width:400px;
+max-width:100%;
 box-shadow:0 20px 40px rgba(0,0,0,0.2);
+}
+
+@media (max-width:480px){
+.card-box{ padding:25px; }
 }
 
 .google-btn{
@@ -68,18 +75,11 @@ color:#777;
 <h2 class="text-center mb-3">Create Profile</h2>
 
 
-<!-- Google Login Button -->
-
-<a href="/accounts/google/login/" class="google-btn">
-
-<img src="https://developers.google.com/identity/images/g-logo.png" width="20">
-
-Continue with Google
-
-</a>
 
 
-<div class="divider">OR</div>
+
+
+
 
 
 <form method="POST">

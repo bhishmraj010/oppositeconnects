@@ -1,301 +1,935 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>OppositeConnect Video Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>OppositeConnect – Video Chat</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
+@view-transition { navigation: auto; }
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: .75s;
+  animation-timing-function: cubic-bezier(.62,-0.2,.3,1.3);
+}
+::view-transition-old(root) { animation-name: flipOut; }
+::view-transition-new(root) { animation-name: flipIn; }
+::view-transition-group(root) { animation-duration: .75s; }
 
-body{
-margin:0;
-background:black;
-font-family:Arial;
-overflow:hidden;
+@keyframes flipOut {
+  0%   { opacity: 1; filter: blur(0); transform: perspective(800px) rotateY(0deg) scale(1) translateZ(0); }
+  40%  { opacity: .7; filter: blur(3px); }
+  100% { opacity: 0; filter: blur(8px); transform: perspective(800px) rotateY(-55deg) scale(.65) translateZ(-200px); }
+}
+@keyframes flipIn {
+  0%   { opacity: 0; filter: blur(8px); transform: perspective(800px) rotateY(55deg) scale(.65) translateZ(-200px); }
+  60%  { opacity: .8; filter: blur(2px); }
+  100% { opacity: 1; filter: blur(0); transform: perspective(800px) rotateY(0deg) scale(1) translateZ(0); }
 }
 
-/* container */
-
-.container{
-position:relative;
-width:100vw;
-height:100vh;
+:root{
+  --violet: #7c5cff;
+  --violet-2: #a78bfa;
+  --pink: #ff4fa3;
+  --cyan: #22d3ee;
+  --glass: rgba(255,255,255,0.08);
+  --glass-brd: rgba(255,255,255,0.14);
+  --font-display: 'Sora', sans-serif;
+  --font-body: 'Inter', sans-serif;
 }
 
-/* stranger video */
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: var(--font-body); }
 
-#partnerVideo{
-position:absolute;
-width:100%;
-height:100%;
-object-fit:cover;
-background:black;
+html, body { height: 100%; overscroll-behavior: none; }
+body {
+  background: #06070d;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* self video */
-
-#myVideo{
-position:absolute;
-width:160px;
-height:120px;
-bottom:20px;
-right:20px;
-border-radius:10px;
-border:2px solid white;
+/* ── Video layers ──────────────────────────────────────────────── */
+#remoteVideo {
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  background: #0a0b16;
 }
 
-/* controls */
-
-.controls{
-position:absolute;
-bottom:30px;
-width:100%;
-display:flex;
-justify-content:center;
-gap:20px;
+/* Placeholder gradient shown before anything connects */
+#remoteVideo:not([data-live="1"]) {
+  background: radial-gradient(120% 120% at 50% 20%, #1a1435 0%, #06070d 70%);
 }
 
-.controls button{
-width:60px;
-height:60px;
-border-radius:50%;
-border:none;
-font-size:22px;
-cursor:pointer;
+/* Draggable local video bubble (WhatsApp-style) */
+#localVideoWrap {
+  position: fixed; top: 24px; right: 20px;
+  width: 118px; height: 158px;
+  border-radius: 20px; overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0,0,0,.5), 0 0 0 2px rgba(255,255,255,.18);
+  z-index: 20; cursor: grab;
+  transition: opacity .4s ease, transform .3s cubic-bezier(.2,.9,.3,1.4);
+  touch-action: none;
+}
+#localVideoWrap:active { cursor: grabbing; transform: scale(0.96); }
+#localVideoWrap.dragging { transition: none; }
+#localVideo {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transform: scaleX(-1); /* mirror selfie */
 }
 
-#camBtn{background:white;}
-#micBtn{background:white;}
-#skipBtn{background:red;color:white;}
-#exitBtn{background:#444;color:white;}
+/* ── Top status pill ───────────────────────────────────────────── */
+#statusBanner {
+  position: fixed; top: 20px; left: 50%; transform: translate(-50%, -140%);
+  padding: 9px 20px; border-radius: 100px;
+  font-size: 13.5px; font-weight: 600; color: #fff;
+  background: rgba(20,20,30,.55); backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-brd);
+  z-index: 30; white-space: nowrap;
+  transition: transform .45s cubic-bezier(.2,.9,.3,1.4), opacity .4s;
+  opacity: 0;
+  pointer-events: none;
+}
+#statusBanner.show { transform: translate(-50%, 0); opacity: 1; }
 
+/* ── Partner cam off overlay ──────────────────────────────────── */
+#partnerCamStatus {
+  position: fixed; inset: 0;
+  background: radial-gradient(120% 120% at 50% 30%, #241a45 0%, #0a0714 75%);
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 4; color: #fff; gap: 18px;
+}
+.avatar-orb {
+  width: 130px; height: 130px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--violet), var(--pink));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 54px; box-shadow: 0 0 0 0 rgba(124,92,255,.5);
+  animation: orbPulse 2.4s ease-in-out infinite;
+}
+@keyframes orbPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(124,92,255,.45); }
+  70%  { box-shadow: 0 0 0 26px rgba(124,92,255,0); }
+  100% { box-shadow: 0 0 0 0 rgba(124,92,255,0); }
+}
+#partnerCamStatus .text { font-size: 16px; opacity: .75; font-weight: 500; }
+
+/* ── Partner mic off chip ─────────────────────────────────────── */
+#partnerMicStatus {
+  position: fixed; top: 24px; left: 20px;
+  background: rgba(20,20,30,.55); backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-brd);
+  color: #fff; padding: 9px 16px; border-radius: 100px;
+  font-size: 13px; font-weight: 600;
+  display: none; align-items: center; gap: 8px; z-index: 20;
+}
+
+/* ── Waiting / calling screen ─────────────────────────────────── */
+#waitingScreen {
+  position: fixed; inset: 0;
+  background: radial-gradient(130% 130% at 50% 15%, #24143f 0%, #06070d 65%);
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  color: #fff; z-index: 15; gap: 26px;
+}
+.call-rings { position: relative; width: 140px; height: 140px; display:flex; align-items:center; justify-content:center; }
+.ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid var(--violet-2); opacity: 0;
+  animation: ringOut 2.4s cubic-bezier(.2,.7,.4,1) infinite;
+}
+.ring:nth-child(2) { animation-delay: .6s; border-color: var(--pink); }
+.ring:nth-child(3) { animation-delay: 1.2s; border-color: var(--cyan); }
+@keyframes ringOut {
+  0%   { transform: scale(0.55); opacity: .8; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.call-core {
+  position: relative; width: 92px; height: 92px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--violet), var(--pink));
+  display: flex; align-items: center; justify-content: center; font-size: 36px;
+  box-shadow: 0 10px 40px rgba(124,92,255,.5);
+}
+#waitingText {
+  font-family: var(--font-display); font-weight: 700; font-size: 19px;
+  letter-spacing: -0.01em;
+}
+.waiting-sub { font-size: 13.5px; color: #a5a6c9; margin-top: -14px; }
+
+.spinner-dots { display: flex; gap: 6px; }
+.spinner-dots span {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--violet-2);
+  animation: dotBounce 1.2s ease-in-out infinite;
+}
+.spinner-dots span:nth-child(2) { animation-delay: .15s; background: var(--pink); }
+.spinner-dots span:nth-child(3) { animation-delay: .3s; background: var(--cyan); }
+@keyframes dotBounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: .4; }
+  40% { transform: translateY(-8px); opacity: 1; }
+}
+
+/* ── Bottom control dock (auto-hides) ───────────────────────────── */
+.controls {
+  position: fixed; bottom: 30px; left: 50%;
+  transform: translate(-50%, 0);
+  display: flex; gap: 14px; z-index: 25;
+  padding: 12px 16px; border-radius: 100px;
+  background: rgba(18,18,28,.5); backdrop-filter: blur(18px);
+  border: 1px solid var(--glass-brd);
+  transition: opacity .45s ease, transform .45s cubic-bezier(.2,.9,.3,1.4);
+}
+.controls.hidden { opacity: 0; transform: translate(-50%, 30px); pointer-events: none; }
+
+.control-btn {
+  width: 56px; height: 56px;
+  border-radius: 50%; border: none;
+  font-size: 21px; cursor: pointer; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .3s cubic-bezier(.2,.9,.3,1.4), background .3s, box-shadow .3s;
+  position: relative; overflow: hidden;
+}
+.control-btn svg{ width:22px; height:22px; }
+
+.ripple-dot{
+  position:absolute; border-radius:50%; background:rgba(255,255,255,.5);
+  transform:scale(0); animation:rippleAnim .6s ease-out forwards; pointer-events:none;
+}
+@keyframes rippleAnim{ to{ transform:scale(2.6); opacity:0; } }
+.control-btn:active { transform: scale(0.88); }
+.control-btn:hover { transform: translateY(-3px); }
+
+.mic, .cam { background: rgba(255,255,255,.12); }
+.mic.off, .cam.off { background: #fff; color: #17171f; }
+.mic.off::after, .cam.off::after {
+  content: ''; position: absolute; width: 2px; height: 68%;
+  background: #ef4444; transform: rotate(45deg); border-radius: 2px;
+}
+
+.skip   { background: rgba(255,255,255,.12); }
+.skip:hover { background: rgba(250,204,21,.3); }
+
+.report { background: rgba(255,255,255,.12); }
+.report:hover { background: rgba(249,115,22,.3); }
+
+.exit {
+  background: linear-gradient(135deg,#ef4444,#b91c1c);
+  width: 62px; height: 62px; font-size: 24px;
+  box-shadow: 0 8px 26px rgba(239,68,68,.4);
+}
+.exit:hover { box-shadow: 0 10px 34px rgba(239,68,68,.55); }
+
+/* ── Friend button ─────────────────────────────────────────────── */
+#friendBtn {
+  position: fixed; top: 24px; right: 150px;
+  background: rgba(20,20,30,.55); backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-brd); color: #fff;
+  padding: 10px 18px; border-radius: 100px; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; z-index: 22; display: none;
+  transition: transform .3s cubic-bezier(.2,.9,.3,1.4), background .3s;
+}
+#friendBtn:hover { transform: scale(1.05); background: rgba(124,92,255,.35); }
+#friendBtn:disabled { opacity: .55; cursor: default; transform: none; }
+
+/* ── Chat toggle + panel ───────────────────────────────────────── */
+#chatToggle {
+  position: fixed; bottom: 30px; left: 20px;
+  width: 54px; height: 54px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--violet), var(--pink));
+  color: #fff; border: none;
+  font-size: 21px; cursor: pointer; z-index: 26;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 28px rgba(124,92,255,.4);
+  transition: transform .3s cubic-bezier(.2,.9,.3,1.4);
+}
+#chatToggle:hover { transform: scale(1.08); }
+#chatBadge {
+  position: absolute; top: -3px; right: -3px;
+  background: var(--cyan); color: #06070d; font-size: 10px; font-weight: 800;
+  border-radius: 50%; width: 17px; height: 17px;
+  display: none; align-items: center; justify-content: center;
+}
+
+#chatPanel {
+  position: fixed; top: 0; left: 0;
+  width: min(340px, 88vw); height: 100%;
+  background: rgba(12,12,22,.78); backdrop-filter: blur(26px);
+  border-right: 1px solid var(--glass-brd);
+  display: flex; flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform .4s cubic-bezier(.16,1,.3,1);
+  z-index: 28;
+}
+#chatPanel.open { transform: translateX(0); }
+
+#chatHeader {
+  padding: 18px; color: #fff; font-weight: 700; font-family: var(--font-display);
+  border-bottom: 1px solid var(--glass-brd);
+  display: flex; justify-content: space-between; align-items: center;
+}
+#chatHeader button {
+  background: rgba(255,255,255,.08); border: none; color: #fff; font-size: 15px;
+  cursor: pointer; width: 30px; height: 30px; border-radius: 50%;
+}
+
+#chatMessages {
+  flex: 1; overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.chat-msg {
+  max-width: 80%; padding: 9px 14px; border-radius: 16px;
+  font-size: 14px; color: #fff; word-wrap: break-word;
+  opacity: 0; animation: msgIn .3s ease forwards;
+}
+@keyframes msgIn { to { opacity: 1; transform: translateY(0); } from { transform: translateY(6px); } }
+.chat-msg.me   { align-self: flex-end;   background: linear-gradient(135deg, var(--violet), #5b21b6); border-bottom-right-radius: 4px; }
+.chat-msg.them { align-self: flex-start; background: rgba(255,255,255,.1); border-bottom-left-radius: 4px; }
+.chat-msg.sys  { align-self: center; background: transparent; color: #9a9ac0; font-size: 12px; }
+
+#chatForm {
+  display: flex; padding: 14px; gap: 10px;
+  border-top: 1px solid var(--glass-brd);
+}
+#chatInput {
+  flex: 1; padding: 12px 16px; border-radius: 22px;
+  border: 1px solid var(--glass-brd); background: rgba(255,255,255,.06); color: #fff;
+  font-size: 14px; outline: none;
+}
+#chatInput::placeholder { color: #77789c; }
+#chatInput:focus { border-color: var(--violet-2); }
+#chatSend {
+  background: linear-gradient(135deg, var(--violet), var(--pink));
+  color: #fff; border: none;
+  width: 44px; height: 44px; border-radius: 50%; cursor: pointer; font-size: 16px;
+  transition: transform .25s;
+}
+#chatSend:active { transform: scale(0.88); }
+
+/* ── Modals ────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; top: 76px; left: 50%;
+  transform: translateX(-50%) translateY(-12px); opacity: 0;
+  background: rgba(20,20,30,.7); backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-brd);
+  color: #fff; padding: 11px 22px; border-radius: 100px;
+  font-size: 13.5px; font-weight: 500;
+  transition: opacity .4s, transform .4s cubic-bezier(.2,.9,.3,1.4); z-index: 999;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(4,4,10,.72); backdrop-filter: blur(6px);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 9999; opacity: 0; pointer-events: none;
+  transition: opacity .3s ease;
+}
+.modal-overlay.visible { opacity: 1; pointer-events: auto; }
+
+.modal-box {
+  background: rgba(20,20,32,.92); backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-brd);
+  padding: 34px; border-radius: 22px; width: min(370px, 88vw); text-align: center;
+  color: #fff;
+  transform: scale(.86) translateY(14px);
+  transition: transform .35s cubic-bezier(.2,.9,.3,1.4);
+  box-shadow: 0 30px 80px rgba(0,0,0,.5);
+}
+.modal-overlay.visible .modal-box { transform: scale(1) translateY(0); }
+
+.modal-box h2 { font-family: var(--font-display); margin-bottom: 12px; font-size: 20px; }
+.modal-box p  { font-size: 14px; color: #b4b5d4; margin-bottom: 24px; line-height: 1.5; }
+.btn-red, .btn-green {
+  border: none; padding: 12px 22px; border-radius: 100px; cursor: pointer; margin: 5px;
+  font-weight: 700; font-size: 14px; color: #fff;
+  transition: transform .25s cubic-bezier(.2,.9,.3,1.4);
+  position: relative; overflow: hidden;
+}
+.btn-red:active, .btn-green:active { transform: scale(0.92); }
+.btn-red   { background: linear-gradient(135deg,#ef4444,#b91c1c); }
+.btn-green { background: linear-gradient(135deg,#22c55e,#15803d); }
+
+/* ── Mobile ────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  #localVideoWrap { width: 92px; height: 128px; top: 18px; right: 14px; }
+  .controls { bottom: 18px; gap: 10px; padding: 10px 12px; }
+  .control-btn { width: 48px; height: 48px; font-size: 18px; }
+  .exit { width: 54px; height: 54px; font-size: 20px; }
+  #friendBtn { top: 18px; right: 112px; padding: 8px 13px; font-size: 12px; }
+  #chatToggle { bottom: 18px; left: 14px; width: 48px; height: 48px; font-size: 18px; }
+  #chatPanel { width: 100%; height: 62%; top: auto; bottom: 0; border-radius: 22px 22px 0 0; border-right: none; border-top: 1px solid var(--glass-brd); transform: translateY(100%); }
+  #chatPanel.open { transform: translateY(0); }
+  .modal-box { padding: 26px; }
+  .avatar-orb { width: 104px; height: 104px; font-size: 42px; }
+  .call-rings, .call-core { transform: scale(0.85); }
+}
+
+@media (max-width: 600px) and (orientation: landscape) {
+  #localVideoWrap { width: 78px; height: 100px; }
+  .control-btn { width: 42px; height: 42px; font-size: 16px; }
+  .exit { width: 46px; height: 46px; }
+  #friendBtn { display: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<input type="hidden" id="userGender" value="{{ profile.gender }}">
 
-<video id="partnerVideo" autoplay playsinline></video>
+<video id="remoteVideo" autoplay playsinline></video>
 
-<video id="myVideo" autoplay muted playsinline></video>
-
-<div class="controls">
-
-<button id="camBtn">📷</button>
-<button id="micBtn">🎤</button>
-<button id="skipBtn">⏭</button>
-<button id="exitBtn">❌</button>
-
+<div id="localVideoWrap">
+  <video id="localVideo" autoplay muted playsinline></video>
 </div>
 
+<!-- Partner cam off overlay -->
+<div id="partnerCamStatus">
+  <div class="avatar-orb"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:44px;height:44px;"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2.5"/></svg></div>
+  <div class="text">Camera is off</div>
+</div>
+
+<!-- Partner mic off badge -->
+<div id="partnerMicStatus">🔇 Mic is off</div>
+
+<div id="statusBanner"></div>
+
+<div id="waitingScreen">
+  <div class="call-rings">
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="call-core">📹</div>
+  </div>
+  <p id="waitingText">Looking for a match…</p>
+  <div class="spinner-dots"><span></span><span></span><span></span></div>
+</div>
+
+<div class="controls" id="controlsDock">
+  <button class="control-btn mic ripple"    id="micBtn" onclick="toggleMic()"  title="Mute/Unmute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg></button>
+  <button class="control-btn cam ripple"    id="camBtn" onclick="toggleCam()"  title="Camera On/Off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2.5"/></svg></button>
+  <button class="control-btn skip ripple"   onclick="skipUser()"   title="Next"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20"/><rect x="17" y="4" width="2.5" height="16" rx="1"/></svg></button>
+  <button class="control-btn report ripple" onclick="reportUser()" title="Report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>
+  <button class="control-btn exit ripple"   onclick="exitChat()"   title="Exit"><svg viewBox="0 0 24 24" fill="currentColor" style="width:24px;height:24px;"><path d="M22.75 15.9l-3.7-1.6a1.5 1.5 0 00-1.75.4l-1.55 1.9a13.6 13.6 0 01-6.35-6.35l1.9-1.55a1.5 1.5 0 00.4-1.75L10.1 1.25A1.5 1.5 0 008.6.4L4.9 1.35A2 2 0 003.4 3.3C3.7 12.3 11.7 20.3 20.7 20.6a2 2 0 001.95-1.5l.95-3.7a1.5 1.5 0 00-.85-1.5z"/></svg></button>
+</div>
+
+<!-- Friend request button -->
+<button id="friendBtn" onclick="sendFriendRequest()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:5px;"><path d="M12 5v14M5 12h14"/></svg>Add Friend</button>
+
+<!-- Text chat -->
+<button id="chatToggle" onclick="toggleChat()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+  <span id="chatBadge"></span>
+</button>
+
+<div id="chatPanel">
+  <div id="chatHeader">
+    <span>Chat</span>
+    <button onclick="toggleChat()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:13px;height:13px;"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div id="chatMessages"></div>
+  <form id="chatForm" onsubmit="return sendChat(event)">
+    <input id="chatInput" type="text" maxlength="500" placeholder="Message…" autocomplete="off">
+    <button id="chatSend" type="submit"><svg viewBox="0 0 24 24" fill="currentColor" style="width:17px;height:17px;"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg></button>
+  </form>
+</div>
+
+<!-- Incoming friend request modal -->
+<div id="friendReqModal" class="modal-overlay">
+  <div class="modal-box">
+    <h2>Friend Request</h2>
+    <p id="friendReqText"></p>
+    <button class="btn-green ripple" onclick="respondFriendRequest(true)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>Accept</button>
+    <button class="btn-red ripple" onclick="respondFriendRequest(false)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:12px;height:12px;vertical-align:-1px;margin-right:5px;"><path d="M18 6L6 18M6 6l12 12"/></svg>Decline</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- AGE MODAL -->
+<div id="ageModal" class="modal-overlay visible">
+  <div class="modal-box">
+    <h2>Community Guidelines</h2>
+    <p>
+      Please be respectful. Any inappropriate or vulgar behavior is strictly
+      prohibited. Violations will result in a <strong>permanent IP ban</strong>.
+    </p>
+    <button class="btn-red ripple"   onclick="under18()">I am under 18</button>
+    <button class="btn-green ripple" onclick="above18()">I am 18 or above</button>
+  </div>
 </div>
 
 <script>
-
-/* VARIABLES */
-
-let socket
-let localStream
-let peerConnection
-
-let peerReady = false
-let startSignal = false
-let isCaller = false
-
-const config = {
-iceServers:[
-{ urls:"stun:stun.l.google.com:19302" }
-]
+function getCookie(name) {
+  const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return v ? v.pop() : '';
 }
-
-const myVideo = document.getElementById("myVideo")
-const partnerVideo = document.getElementById("partnerVideo")
-
-/* WEBSOCKET */
-
-socket = new WebSocket(
-"ws://" + window.location.host + "/ws/video/"
-)
-
-socket.onopen = ()=>{
-console.log("WebSocket connected")
+function sendHeartbeat() {
+  fetch("/friends/heartbeat/", {
+    method: "POST",
+    headers: { "X-CSRFToken": getCookie("csrftoken") },
+  }).catch(() => {});
 }
-
-/* CAMERA + PEER SETUP */
-
-async function init(){
-
-localStream = await navigator.mediaDevices.getUserMedia({
-video:true,
-audio:true
-})
-
-myVideo.srcObject = localStream
-
-peerConnection = new RTCPeerConnection(config)
-
-localStream.getTracks().forEach(track=>{
-peerConnection.addTrack(track,localStream)
-})
-
-peerConnection.ontrack = event=>{
-console.log("Remote stream received")
-partnerVideo.srcObject = event.streams[0]
-}
-
-peerConnection.onicecandidate = event=>{
-if(event.candidate){
-
-socket.send(JSON.stringify({
-type:"candidate",
-candidate:event.candidate
-}))
-
-}
-}
-
-peerReady = true
-
-if(startSignal && isCaller){
-startCall()
-}
-
-}
-
-init()
-
-/* START CALL */
-
-async function startCall(){
-
-const offer = await peerConnection.createOffer()
-
-await peerConnection.setLocalDescription(offer)
-
-socket.send(JSON.stringify({
-type:"offer",
-offer:offer
-}))
-
-}
-
-/* SOCKET MESSAGES */
-
-socket.onmessage = async function(event){
-
-const data = JSON.parse(event.data)
-
-console.log("Message:",data.type)
-
-if(data.type === "start"){
-
-startSignal = true
-
-if(Math.random() < 0.5){
-isCaller = true
-}
-
-if(peerReady && isCaller){
-startCall()
-}
-
-}
-
-/* OFFER */
-
-if(data.type === "offer"){
-
-await peerConnection.setRemoteDescription(
-new RTCSessionDescription(data.offer)
-)
-
-const answer = await peerConnection.createAnswer()
-
-await peerConnection.setLocalDescription(answer)
-
-socket.send(JSON.stringify({
-type:"answer",
-answer:answer
-}))
-
-}
-
-/* ANSWER */
-
-if(data.type === "answer"){
-
-await peerConnection.setRemoteDescription(
-new RTCSessionDescription(data.answer)
-)
-
-}
-
-/* ICE */
-
-if(data.type === "candidate"){
-
-try{
-await peerConnection.addIceCandidate(
-new RTCIceCandidate(data.candidate)
-)
-}catch(e){}
-
-}
-
-/* DISCONNECT */
-
-if(data.type === "disconnect"){
-partnerVideo.srcObject = null
-}
-
-}
-
-/* CAMERA TOGGLE */
-
-const camBtn = document.getElementById("camBtn")
-
-camBtn.onclick = ()=>{
-
-const videoTrack = localStream.getVideoTracks()[0]
-
-videoTrack.enabled = !videoTrack.enabled
-
-}
-
-/* MIC TOGGLE */
-
-const micBtn = document.getElementById("micBtn")
-
-micBtn.onclick = ()=>{
-
-const audioTrack = localStream.getAudioTracks()[0]
-
-audioTrack.enabled = !audioTrack.enabled
-
-}
-
-/* SKIP */
-
-document.getElementById("skipBtn").onclick = ()=>{
-
-socket.send(JSON.stringify({
-type:"disconnect"
-}))
-
-partnerVideo.srcObject = null
-
-}
-
-/* EXIT */
-
-document.getElementById("exitBtn").onclick = ()=>{
-
-socket.close()
-
-window.location.href="/"
-
-}
-
+sendHeartbeat();
+setInterval(sendHeartbeat, 15000);
 </script>
 
+<script>
+
+const MY_GENDER = document.getElementById("userGender").value || "Other";
+const OPPOSITE  = { Male: "Female", Female: "Male", Other: "Other" };
+const CALL_TARGET = new URLSearchParams(location.search).get("call");
+
+let localStream = null;
+let peer        = null;
+let socket      = null;
+let micOn       = true;
+let camOn       = true;
+
+let partnerUsername   = null;
+let pendingFriendReqId = null;
+let chatOpen           = false;
+
+// ── Toast ──────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.innerText = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+// ── Status Banner ──────────────────────────────────────────────────
+function showStatus(msg, color) {
+  const b = document.getElementById("statusBanner");
+  b.innerText = msg;
+  b.classList.add("show");
+  setTimeout(() => { b.classList.remove("show"); }, 4000);
+}
+
+// ── Waiting Screen ─────────────────────────────────────────────────
+function showWaiting(show, text = "Looking for a match…") {
+  const w = document.getElementById("waitingScreen");
+  document.getElementById("waitingText").innerText = text;
+  w.style.display = show ? "flex" : "none";
+}
+
+// ── Reset partner status indicators ───────────────────────────────
+function resetPartnerStatus() {
+  document.getElementById("partnerCamStatus").style.display = "none";
+  document.getElementById("partnerMicStatus").style.display = "none";
+  document.getElementById("remoteVideo").removeAttribute("data-live");
+}
+
+// ── Reset chat + friend UI for a fresh partner ─────────────────────
+function resetPartnerExtras() {
+  partnerUsername = null;
+  pendingFriendReqId = null;
+  document.getElementById("friendBtn").style.display = "none";
+  document.getElementById("friendBtn").disabled = false;
+  document.getElementById("friendBtn").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:5px;"><path d="M12 5v14M5 12h14"/></svg>Add Friend`;
+  document.getElementById("chatMessages").innerHTML = "";
+  document.getElementById("chatBadge").style.display = "none";
+}
+
+// ── Age Gate ───────────────────────────────────────────────────────
+function under18() {
+  alert("You must be 18+ to use this platform.");
+  window.location.href = "/";
+}
+
+async function above18() {
+  document.getElementById("ageModal").classList.remove("visible");
+  await initChat();
+}
+
+// ── Camera + Mic Init ──────────────────────────────────────────────
+async function initChat() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById("localVideo").srcObject = localStream;
+    connectSocket();
+  } catch (e) {
+    showToast("❌ Camera / Mic access denied.");
+    console.error(e);
+  }
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────
+function connectSocket() {
+  const scheme = location.protocol === "https:" ? "wss://" : "ws://";
+  socket = new WebSocket(scheme + location.host + "/ws/video/");
+
+  socket.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === "need_gender") {
+      if (CALL_TARGET) {
+        socket.send(JSON.stringify({ type: "register", gender: MY_GENDER, mode: "call" }));
+        socket.send(JSON.stringify({ type: "call_friend", username: CALL_TARGET }));
+        showWaiting(true, `Calling ${CALL_TARGET}…`);
+      } else {
+        socket.send(JSON.stringify({ type: "register", gender: MY_GENDER }));
+      }
+      return;
+    }
+
+    if (data.type === "call_failed") {
+      showWaiting(false);
+      showStatus(`❌ ${CALL_TARGET} is not online right now.`);
+      setTimeout(() => { window.location.href = "/"; }, 2500);
+      return;
+    }
+
+    if (data.type === "waiting") {
+      showWaiting(true, "Waiting to connect…");
+      return;
+    }
+
+    if (data.type === "start") {
+      showWaiting(false);
+      resetPartnerStatus();
+      resetPartnerExtras();
+      showStatus(`✅ Connected to a ${data.partner_gender || "stranger"}!`);
+      document.getElementById("remoteVideo").setAttribute("data-live", "1");
+
+      partnerUsername = data.partner_username || null;
+      if (partnerUsername) {
+        document.getElementById("friendBtn").style.display = "block";
+      }
+      addChatMessage("sys", `Connected. Say hi 👋`);
+
+      if (!localStream) return;
+      createPeer();
+      if (data.is_caller) {
+        await callPeer();
+      }
+      return;
+    }
+
+    if (data.type === "offer") {
+      if (!localStream) return;
+      if (!peer) createPeer();
+      await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      socket.send(JSON.stringify({ type: "answer", answer }));
+      return;
+    }
+
+    if (data.type === "answer") {
+      if (peer && peer.signalingState === "have-local-offer") {
+        await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+      }
+      return;
+    }
+
+    if (data.type === "candidate") {
+      try {
+        if (peer) await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+      } catch (e) { console.warn("ICE error:", e); }
+      return;
+    }
+
+    // ✅ Partner ka mic status
+    if (data.type === "mic_status") {
+      const el = document.getElementById("partnerMicStatus");
+      el.style.display = data.enabled ? "none" : "flex";
+      return;
+    }
+
+    // ✅ Partner ka cam status
+    if (data.type === "cam_status") {
+      const el = document.getElementById("partnerCamStatus");
+      el.style.display = data.enabled ? "none" : "flex";
+      return;
+    }
+
+    // ✅ Text chat message from partner
+    if (data.type === "chat") {
+      addChatMessage("them", data.message, data.from);
+      if (!chatOpen) {
+        document.getElementById("chatBadge").style.display = "flex";
+      }
+      return;
+    }
+
+    // ✅ Partner sent us a friend request
+    if (data.type === "friend_request_received") {
+      pendingFriendReqId = data.request_id;
+      document.getElementById("friendReqText").innerText =
+        `${data.from_username} sent you a friend request.`;
+      document.getElementById("friendReqModal").classList.add("visible");
+      return;
+    }
+
+    // ✅ Result of a friend request we sent
+    if (data.type === "friend_request_result") {
+      if (data.status === "sent") {
+        showToast("✅ Friend request sent!");
+        document.getElementById("friendBtn").disabled = true;
+        document.getElementById("friendBtn").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>Sent`;
+      } else if (data.status === "already_friends") {
+        showToast("You're already friends!");
+        document.getElementById("friendBtn").disabled = true;
+        document.getElementById("friendBtn").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>Friends`;
+      }
+      return;
+    }
+
+    if (data.type === "friend_request_accepted") {
+      showToast(`🎉 ${data.by} accepted your friend request!`);
+      document.getElementById("friendBtn").disabled = true;
+      document.getElementById("friendBtn").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>Friends`;
+      return;
+    }
+
+    if (data.type === "friend_request_declined") {
+      showToast(`${data.by} declined the friend request.`);
+      return;
+    }
+
+    if (data.type === "disconnect") {
+      showStatus("👋 Partner disconnected. Looking for next…");
+      destroyPeer();
+      resetPartnerStatus();
+      resetPartnerExtras();
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "register", gender: MY_GENDER }));
+      }
+      return;
+    }
+
+    if (data.type === "partner_banned") {
+      showToast("✅ Report submitted. Partner has been banned.");
+      destroyPeer();
+      resetPartnerStatus();
+      resetPartnerExtras();
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "register", gender: MY_GENDER }));
+      }
+      return;
+    }
+
+    if (data.type === "banned") {
+      showStatus("🚫 You have been permanently banned.");
+      socket.close();
+      setTimeout(() => { window.location.href = "/"; }, 3000);
+      return;
+    }
+  };
+
+  socket.onclose = () => console.log("WebSocket closed");
+  socket.onerror = (e) => console.error("WebSocket error:", e);
+}
+
+// ── RTCPeerConnection ──────────────────────────────────────────────
+function createPeer() {
+  destroyPeer();
+
+  peer = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" }
+    ]
+  });
+
+  if (!peer) return;
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+  }
+
+  peer.ontrack = (e) => {
+    document.getElementById("remoteVideo").srcObject = e.streams[0];
+  };
+
+  peer.onicecandidate = (e) => {
+    if (e.candidate && socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+    }
+  };
+
+  peer.onconnectionstatechange = () => {
+    console.log("Connection state:", peer.connectionState);
+  };
+
+  peer.oniceconnectionstatechange = () => {
+    console.log("ICE connection:", peer.iceConnectionState);
+    if (peer.iceConnectionState === "failed") {
+      peer.restartIce();
+    }
+  };
+}
+
+function destroyPeer() {
+  if (peer) { peer.close(); peer = null; }
+  document.getElementById("remoteVideo").srcObject = null;
+}
+
+async function callPeer() {
+  if (!peer) return;
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  socket.send(JSON.stringify({ type: "offer", offer }));
+}
+
+// ── Text chat ──────────────────────────────────────────────────────
+function addChatMessage(kind, message, from) {
+  const box = document.getElementById("chatMessages");
+  const div = document.createElement("div");
+  div.className = "chat-msg " + kind;
+  div.innerText = kind === "them" && from ? `${from}: ${message}` : message;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  document.getElementById("chatPanel").classList.toggle("open", chatOpen);
+  if (chatOpen) document.getElementById("chatBadge").style.display = "none";
+}
+
+function sendChat(e) {
+  e.preventDefault();
+  const input = document.getElementById("chatInput");
+  const message = input.value.trim();
+  if (!message || !socket || socket.readyState !== WebSocket.OPEN) return false;
+  socket.send(JSON.stringify({ type: "chat", message }));
+  addChatMessage("me", message);
+  input.value = "";
+  return false;
+}
+
+// ── Friend requests ───────────────────────────────────────────────
+function sendFriendRequest() {
+  if (!socket || socket.readyState !== WebSocket.OPEN || !partnerUsername) return;
+  socket.send(JSON.stringify({ type: "friend_request" }));
+}
+
+function respondFriendRequest(accept) {
+  document.getElementById("friendReqModal").classList.remove("visible");
+  if (!socket || socket.readyState !== WebSocket.OPEN || pendingFriendReqId === null) return;
+  socket.send(JSON.stringify({
+    type: "friend_request_response",
+    request_id: pendingFriendReqId,
+    accept,
+  }));
+  pendingFriendReqId = null;
+}
+
+// ── Controls ───────────────────────────────────────────────────────
+function toggleMic() {
+  if (!localStream) return;
+  micOn = !micOn;
+  localStream.getAudioTracks().forEach(t => t.enabled = micOn);
+  document.getElementById("micBtn").classList.toggle("off", !micOn);
+  showToast(micOn ? "🎤 Mic ON" : "🔇 Mic OFF");
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "mic_status", enabled: micOn }));
+  }
+}
+
+function toggleCam() {
+  if (!localStream) return;
+  camOn = !camOn;
+  localStream.getVideoTracks().forEach(t => t.enabled = camOn);
+  document.getElementById("camBtn").classList.toggle("off", !camOn);
+  showToast(camOn ? "📷 Camera ON" : "🚫 Camera OFF");
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "cam_status", enabled: camOn }));
+  }
+}
+
+function skipUser() {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "disconnect" }));
+  }
+  destroyPeer();
+  resetPartnerStatus();
+  resetPartnerExtras();
+  showWaiting(true, "Looking for the next person…");
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "register", gender: MY_GENDER }));
+  }
+}
+
+function reportUser() {
+  if (!confirm("Report this user for vulgar/inappropriate activity?\nThey will be permanently banned.")) return;
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "report" }));
+  }
+}
+
+function exitChat() {
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (socket) socket.close();
+  window.location.href = "/";
+}
+
+// ── Ripple click effect ───────────────────────────────────────────
+document.querySelectorAll(".ripple").forEach(el => {
+  el.addEventListener("click", (e) => {
+    const r = el.getBoundingClientRect();
+    const dot = document.createElement("span");
+    const size = Math.max(r.width, r.height);
+    dot.className = "ripple-dot";
+    dot.style.width = dot.style.height = size + "px";
+    dot.style.left = (e.clientX - r.left - size / 2) + "px";
+    dot.style.top = (e.clientY - r.top - size / 2) + "px";
+    el.appendChild(dot);
+    setTimeout(() => dot.remove(), 650);
+  });
+});
+
+// ── Draggable local video bubble ────────────────────────────────────
+(function makeDraggable() {
+  const el = document.getElementById("localVideoWrap");
+  let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+
+  function start(x, y) {
+    dragging = true;
+    el.classList.add("dragging");
+    const r = el.getBoundingClientRect();
+    sx = x; sy = y; ox = r.left; oy = r.top;
+  }
+  function move(x, y) {
+    if (!dragging) return;
+    let nx = ox + (x - sx);
+    let ny = oy + (y - sy);
+    nx = Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, nx));
+    ny = Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, ny));
+    el.style.left = nx + "px";
+    el.style.top = ny + "px";
+    el.style.right = "auto";
+  }
+  function end() { dragging = false; el.classList.remove("dragging"); }
+
+  el.addEventListener("pointerdown", (e) => { el.setPointerCapture(e.pointerId); start(e.clientX, e.clientY); });
+  el.addEventListener("pointermove", (e) => move(e.clientX, e.clientY));
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+})();
+
+// ── Auto-hide controls after inactivity (tap screen to reveal) ─────
+(function autoHideControls() {
+  const dock = document.getElementById("controlsDock");
+  let hideTimer = null;
+
+  function showDock() {
+    dock.classList.remove("hidden");
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => dock.classList.add("hidden"), 4500);
+  }
+
+  ["pointerdown", "touchstart", "mousemove"].forEach(evt =>
+    document.addEventListener(evt, showDock, { passive: true })
+  );
+  showDock();
+})();
+
+</script>
 </body>
 </html>
